@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>麻雀卓組生成ツール</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>麻雀卓組生成ツール</h1>
+        
+        <div class="input-section">
+            <h2>参加者設定</h2>
+            
+            <div class="form-group">
+                <label>参加者名（1人1行で入力）:</label>
+                <textarea id="playerNames" rows="10" placeholder="田中&#10;佐藤&#10;鈴木&#10;高橋&#10;..."></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label for="rounds">回数:</label>
+                <input type="number" id="rounds" min="1" value="5">
+            </div>
+            
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="allowFive">
+                    5人打ちを許可する
+                </label>
+            </div>
+            
+            <button id="generateBtn" class="generate-btn">卓組を生成</button>
+        </div>
+        
+        <div id="results" class="results-section" style="display: none;">
+            <h2>卓組結果</h2>
+            <div id="resultsContent"></div>
+        </div>
+        
+        <div id="error" class="error-message" style="display: none;"></div>
+    </div>
+    
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

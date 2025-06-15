@@ -120,6 +120,55 @@ python table_group_optimized.py [参加人数] [節数]
 - `static/js/app.js` - フロントエンドJavaScript
 - `static/css/style.css` - スタイルシート
 
+## 本番環境へのデプロイ
+
+### Gunicornを使用したデプロイ
+
+1. 依存関係をインストール（Gunicornを含む）
+```bash
+pip install -r requirements.txt
+```
+
+2. Gunicornで起動
+```bash
+./run_production.sh
+```
+または
+```bash
+gunicorn --config gunicorn_config.py wsgi:app
+```
+
+### Nginxとの連携
+
+`nginx.conf.example`を参考にNginxを設定してください：
+
+```bash
+sudo cp nginx.conf.example /etc/nginx/sites-available/mahjong-table-group
+sudo ln -s /etc/nginx/sites-available/mahjong-table-group /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+### Systemdサービスとして実行
+
+`systemd.service.example`を参考にサービスファイルを作成：
+
+```bash
+sudo cp systemd.service.example /etc/systemd/system/mahjong-table-group.service
+sudo systemctl daemon-reload
+sudo systemctl enable mahjong-table-group
+sudo systemctl start mahjong-table-group
+```
+
+### 環境変数
+
+本番環境では以下の環境変数を設定することを推奨：
+
+```bash
+export FLASK_ENV=production
+export SECRET_KEY=your-secret-key-here
+```
+
 ## ライセンス
 
 このプロジェクトはMITライセンスの下で公開されています。

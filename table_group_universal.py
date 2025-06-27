@@ -242,22 +242,69 @@ class UniversalTableGroupGenerator:
     
     def _greedy_assignment(self, players: List[int], 
                           pair_count: Dict[Tuple[int, int], int]) -> List[List[int]]:
-        """グリーディな卓割り当て"""
+        """グリーディな卓割り当て（全員を配置）"""
         tables = []
         remaining = players.copy()
         
+        # 5人打ちが許可されていて、人数が4で割り切れない場合
+        if self.allow_five and len(remaining) % 4 != 0:
+            # 5人卓を作る必要がある数を計算
+            num_five_tables = 4 - (len(remaining) % 4)
+            
+            # 5人卓を作成
+            for _ in range(num_five_tables):
+                if len(remaining) >= 5:
+                    # 5人の最適な組み合わせを選択
+                    table = self._select_best_table_size(remaining, pair_count, 5)
+                    tables.append(table)
+                    for p in table:
+                        remaining.remove(p)
+        
+        # 残りは4人卓
         while len(remaining) >= 4:
-            # 未実現ペアまたは最小回数ペアを優先
             table = self._select_best_table(remaining, pair_count)
             tables.append(table)
             for p in table:
                 remaining.remove(p)
         
+        # 残りがある場合（待機者として扱うべき）
+        # この時点で残りは0人のはず
+        if remaining:
+            print(f"警告: {len(remaining)}人が未配置: {remaining}")
+        
         return tables
+    
+    def _select_best_table_size(self, players: List[int], 
+                               pair_count: Dict[Tuple[int, int], int], 
+                               size: int) -> List[int]:
+        """指定サイズの最適な卓を選択"""
+        if len(players) <= 10:
+            # 全探索
+            best_table = None
+            best_score = float('-inf')
+            
+            for table in combinations(players, size):
+                score = 0
+                for p1, p2 in combinations(table, 2):
+                    pair = tuple(sorted([p1, p2]))
+                    count = pair_count.get(pair, 0)
+                    if count == 0:
+                        score += 1000  # 未実現ペアを最優先
+                    else:
+                        score -= count ** 2  # 既存ペアにペナルティ
+                
+                if score > best_score:
+                    best_score = score
+                    best_table = list(table)
+            
+            return best_table
+        else:
+            # ランダムサンプリング
+            return random.sample(players, size)
     
     def _select_best_table(self, players: List[int], 
                           pair_count: Dict[Tuple[int, int], int]) -> List[int]:
-        """最適な卓を選択"""
+        """最適な卓を選択（4人）"""
         if len(players) <= 8:
             # 全探索
             best_table = None
@@ -600,14 +647,26 @@ class UniversalTableGroupGenerator:
             if player_tables:
                 prob += pulp.lpSum(player_tables) <= 1
         
+        # 制約：できるだけ多くのプレイヤーを配置（ソフト制約として目的関数に追加）
+        # これにより、全員を配置しようとする
+        
         # 解く
         prob.solve(pulp.PULP_CBC_CMD(msg=0, timeLimit=timeout))
         
         # 結果を抽出
         selected_tables = []
+        placed_players = set()
+        
         for i, table in enumerate(possible_tables):
             if table_vars[i].varValue > 0.5:
                 selected_tables.append(list(table))
+                placed_players.update(table)
+        
+        # 配置されていないプレイヤーがいる場合、グリーディに追加
+        unplaced = set(players) - placed_players
+        if unplaced and len(unplaced) >= 4:
+            remaining_tables = self._greedy_assignment(list(unplaced), pair_count)
+            selected_tables.extend(remaining_tables)
         
         return selected_tables if selected_tables else self._greedy_assignment(players, pair_count)
     

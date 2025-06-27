@@ -6,6 +6,7 @@ from collections import defaultdict
 from itertools import combinations
 from table_group_universal import UniversalTableGroupGenerator
 from table_group_guaranteed import GuaranteedTableGroupGenerator
+from table_group_perfect import PerfectTableGroupGenerator
 
 
 class TableGroupGenerator:
@@ -21,20 +22,12 @@ class TableGroupGenerator:
         self.rounds = rounds
         self.allow_five = allow_five
         
-        # 16人以下の場合はGuaranteedを使用（より確実）
-        # それ以上の場合はUniversalを使用
-        if self.players <= 16:
-            self.generator = GuaranteedTableGroupGenerator(
-                players=self.players,
-                rounds=self.rounds,
-                allow_five=self.allow_five
-            )
-        else:
-            self.generator = UniversalTableGroupGenerator(
-                players=self.players,
-                rounds=self.rounds,
-                allow_five=self.allow_five
-            )
+        # UniversalTableGroupGeneratorを使用
+        self.generator = UniversalTableGroupGenerator(
+            players=self.players,
+            rounds=self.rounds,
+            allow_five=self.allow_five
+        )
         
     def generate(self) -> List[List[List[int]]]:
         """全ラウンドの卓組を生成"""

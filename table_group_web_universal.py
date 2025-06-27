@@ -37,11 +37,29 @@ class TableGroupGenerator:
         
         # 1-indexedから0-indexedに変換
         converted_results = []
-        for round_tables in results:
+        for round_idx, round_tables in enumerate(results):
             converted_round = []
+            
+            # このラウンドで配置されたプレイヤーを追跡
+            placed_players = set()
             for table in round_tables:
-                converted_table = [p - 1 for p in table]
-                converted_round.append(converted_table)
+                if len(table) >= 4:  # 4人以上の卓のみ（待機者は除外）
+                    converted_table = [p - 1 for p in table]
+                    converted_round.append(converted_table)
+                    placed_players.update(table)
+            
+            # 配置されていないプレイヤーを確認
+            all_players = set(range(1, self.players + 1))
+            missing_players = all_players - placed_players
+            
+            # 不足している場合は追加の卓を作成
+            if missing_players and len(missing_players) >= 4:
+                missing_list = sorted(list(missing_players))
+                while len(missing_list) >= 4:
+                    extra_table = [p - 1 for p in missing_list[:4]]
+                    converted_round.append(extra_table)
+                    missing_list = missing_list[4:]
+            
             converted_results.append(converted_round)
         
         return converted_results

@@ -2,7 +2,7 @@
 """麻雀卓組生成Webアプリケーション"""
 
 from flask import Flask, render_template, request, jsonify
-from table_group_web import TableGroupGenerator
+from table_group_web_universal import TableGroupGenerator
 
 app = Flask(__name__)
 

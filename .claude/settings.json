@@ -1,0 +1,45 @@
+{
+  "model": "opus",
+  "permissions": {
+    "allow": [
+      // バージョン管理
+      "Bash(git:*)",
+      
+      // ファイル操作
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(pwd:*)",
+      "Bash(cd:*)",
+      
+      // 検索系
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",     // ripgrep（高速検索）
+      
+      // 開発ツール
+      "Bash(npm:*)",
+      "Bash(node:*)",
+      "Bash(python:*)",
+      "Bash(make:*)",
+      
+      // ユーティリティ
+      "Bash(jq:*)",     // JSON処理
+      "Bash(curl:*)",   // API通信
+      "Bash(echo:*)",   // 出力確認
+      
+      // デプロイ関連
+      "Bash(vercel:*)", // Vercel CLI
+      "Bash(gh:*)",     // GitHub CLI
+      
+      // Web参照
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:vercel.com)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "WebFetch(domain:stackoverflow.com)",
+      "WebFetch(domain:developer.mozilla.org)",
+      "WebFetch(domain:npmjs.com)",
+      "WebFetch(domain:nextjs.org)"
+    ],
+    "deny": []
+  }
+}

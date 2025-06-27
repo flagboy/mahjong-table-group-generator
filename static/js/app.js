@@ -153,14 +153,26 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // ペア統計
         const pairStats = results.statistics.pair_statistics;
+        console.log('Pair Statistics:', pairStats);  // デバッグ用
+        
         html += `<div class="pair-stats">`;
+        html += `<p>最小同卓回数: ${pairStats.min_count}回</p>`;
         html += `<p>最大同卓回数: ${pairStats.max_count}回</p>`;
+        html += `<p>カバレッジ: ${pairStats.coverage.toFixed(1)}%</p>`;
         
         // 同卓回数の分布
         const sortedCounts = Object.keys(pairStats.distribution).sort((a, b) => a - b);
         sortedCounts.forEach(count => {
             html += `<div class="stat-item">${count}回同卓: ${pairStats.distribution[count]}ペア</div>`;
         });
+        
+        // 0回同卓の警告
+        if (pairStats.min_count === 0) {
+            html += `<div class="warning" style="color: red; margin-top: 10px;">`;
+            html += `⚠️ 注意: 一度も同卓しないペアが存在します`;
+            html += `</div>`;
+        }
+        
         html += `</div>`;
         
         // 待機回数統計（5人で5人打ちなしの場合）

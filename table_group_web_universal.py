@@ -35,30 +35,46 @@ class TableGroupGenerator:
         # 0-indexedに変換する必要がある
         results = self.generator.generate()
         
-        # 1-indexedから0-indexedに変換
+        # 1-indexedから0-indexedに変換し、欠落プレイヤーを修正
         converted_results = []
         for round_idx, round_tables in enumerate(results):
             converted_round = []
-            
-            # このラウンドで配置されたプレイヤーを追跡
             placed_players = set()
+            waiting_players = []
+            
+            # 各卓を処理
             for table in round_tables:
-                if len(table) >= 4:  # 4人以上の卓のみ（待機者は除外）
+                if len(table) >= 4:  # 4人以上の卓
                     converted_table = [p - 1 for p in table]
                     converted_round.append(converted_table)
                     placed_players.update(table)
+                elif len(table) > 0:  # 4人未満（待機者）
+                    # 待機者として記録（後で処理）
+                    waiting_players.extend(table)
+                    placed_players.update(table)
             
-            # 配置されていないプレイヤーを確認
+            # 全プレイヤーを確認
             all_players = set(range(1, self.players + 1))
             missing_players = all_players - placed_players
             
-            # 不足している場合は追加の卓を作成
-            if missing_players and len(missing_players) >= 4:
+            # 欠落プレイヤーがいる場合
+            if missing_players:
                 missing_list = sorted(list(missing_players))
+                
+                # 4人以上なら卓を作成
                 while len(missing_list) >= 4:
                     extra_table = [p - 1 for p in missing_list[:4]]
                     converted_round.append(extra_table)
                     missing_list = missing_list[4:]
+                
+                # 残りは待機者に追加
+                if missing_list:
+                    waiting_players.extend(missing_list)
+            
+            # 待機者がいる場合は最後に追加（0-indexed）
+            if waiting_players:
+                converted_waiting = [p - 1 for p in waiting_players]
+                converted_round.append(converted_waiting)
             
             converted_results.append(converted_round)
         

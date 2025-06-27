@@ -22,26 +22,15 @@ class TableGroupGenerator:
         self.rounds = rounds
         self.allow_five = allow_five
         
-        # 12人6回戦の場合は特別な最適化を使用
-        if self.players == 12 and self.rounds == 6 and not self.allow_five:
-            # 12人6回戦の事前計算された最良解を使用
-            self.use_precomputed = True
-            self.generator = None
-        else:
-            # その他の場合はUniversalTableGroupGeneratorを使用
-            self.use_precomputed = False
-            self.generator = UniversalTableGroupGenerator(
-                players=self.players,
-                rounds=self.rounds,
-                allow_five=self.allow_five
-            )
+        # UniversalTableGroupGeneratorを使用
+        self.generator = UniversalTableGroupGenerator(
+            players=self.players,
+            rounds=self.rounds,
+            allow_five=self.allow_five
+        )
         
     def generate(self) -> List[List[List[int]]]:
         """全ラウンドの卓組を生成"""
-        if self.use_precomputed:
-            # 12人6回戦の事前計算された最良解を使用
-            return self._get_12_6_optimal_solution()
-        
         # UniversalTableGroupGeneratorは1-indexedのプレイヤーIDを返すので、
         # 0-indexedに変換する必要がある
         results = self.generator.generate()
@@ -56,31 +45,6 @@ class TableGroupGenerator:
             converted_results.append(converted_round)
         
         return converted_results
-    
-    def _get_12_6_optimal_solution(self) -> List[List[List[int]]]:
-        """12人6回戦の数学的に証明された最適解（0-indexed）"""
-        # この解は以下の条件を満たす:
-        # - 全66ペアが最低1回同卓（100%カバレッジ）
-        # - 最大4回同卓
-        # - 実際のテストで100%カバレッジが確認済み
-        
-        # 注: この解はResolvable Balanced Incomplete Block Design (RBIBD)
-        # の一種で、parameters (12,4,2)を持つ数学的に構成された解
-        solution = [
-            # 第1回戦
-            [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]],
-            # 第2回戦  
-            [[0, 4, 8, 11], [1, 5, 9, 6], [2, 3, 7, 10]],
-            # 第3回戦
-            [[0, 5, 10, 6], [1, 3, 8, 11], [2, 4, 9, 7]],
-            # 第4回戦
-            [[0, 3, 9, 7], [1, 4, 10, 8], [2, 5, 11, 6]],
-            # 第5回戦
-            [[0, 1, 10, 7], [2, 5, 8, 9], [3, 4, 6, 11]],
-            # 第6回戦
-            [[0, 2, 4, 9], [1, 3, 5, 10], [6, 7, 8, 11]],
-        ]
-        return solution
     
     def format_results(self, results: List[List[List[int]]]) -> Dict[str, Any]:
         """結果を辞書形式にフォーマット"""

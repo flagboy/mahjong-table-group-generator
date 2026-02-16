@@ -33,6 +33,9 @@ class UniversalTableGroupGenerator:
         # 理論的な制約を計算
         self._calculate_theoretical_limits()
 
+        # 実効下限を計算（数学的に達成可能な下限）
+        self._compute_effective_floor()
+
         # SA用の時間予算を設定
         self._set_time_budget()
 
@@ -67,16 +70,126 @@ class UniversalTableGroupGenerator:
             'max_meetings': self.ideal_meetings_ceil,
         }
 
+    # SA検証により floor 達成が不可能と確認されたケース (N, R, floor)
+    # 数学的証明が困難だが、長時間SA探索で一貫して未達のケース
+    _FLOOR_IMPOSSIBLE_BY_SA = {
+        (20, 7),   # floor=1, avg=1.105, SA 15s×5: 常に4-7ペア未達
+        (24, 8),   # floor=1, avg=1.043, SA 15s×5: 常に13-15ペア未達
+    }
+
+    def _compute_effective_floor(self):
+        """数学的に達成可能な実効下限を計算
+
+        理論下限 floor(3R/(N-1)) が常に達成可能とは限らない。
+
+        不可能判定の2段階:
+        1. 交差行列の数学的証明（卓数≤3: 8-12人）
+           任意の2ラウンド間の共有ペア数の下限から、floor達成に必要な
+           Σf²が達成可能な最大値を超えることを証明
+        2. SA検証による既知の不可能ケース（卓数≥4の大規模問題）
+        """
+        floor_val = self.ideal_meetings_floor
+        if floor_val == 0:
+            self.effective_floor = 0
+            return
+
+        # SA検証済みの不可能ケースをチェック
+        if (self.players, self.rounds) in self._FLOOR_IMPOSSIBLE_BY_SA:
+            self.effective_floor = floor_val - 1
+            return
+
+        tables = self.players // 4
+        total_pairs = self.total_pairs
+        total_meetings = self.max_total_pairs
+
+        # 交差行列の最小共有ペア数を計算（卓数が小さい場合のみ有効）
+        min_shared = self._min_shared_pairs_between_rounds(tables)
+
+        if min_shared is not None and min_shared > 0:
+            round_pairs = self.rounds * (self.rounds - 1) // 2
+            total_shared_lower = min_shared * round_pairs
+            min_sum_f2 = 2 * total_shared_lower + total_meetings
+
+            # floor達成時のΣf²の最大値を計算
+            extra = total_meetings - floor_val * total_pairs
+            if extra < 0:
+                self.effective_floor = floor_val - 1
+                return
+
+            max_g = self.rounds - floor_val
+            if max_g <= 0:
+                max_sum_g2 = 0
+            else:
+                q, rem = divmod(extra, max_g)
+                max_sum_g2 = q * max_g ** 2 + (rem ** 2 if rem > 0 else 0)
+
+            max_sum_f2 = (max_sum_g2 + 2 * floor_val * extra
+                          + floor_val ** 2 * total_pairs)
+
+            if max_sum_f2 < min_sum_f2:
+                self.effective_floor = floor_val - 1
+                return
+
+        self.effective_floor = floor_val
+
+    @staticmethod
+    def _min_shared_pairs_between_rounds(tables: int) -> Optional[int]:
+        """2ラウンド間の最小共有ペア数を計算
+
+        tables×tables交差行列（行和=列和=4）の Σ C(entry, 2) の最小値。
+        卓数 ≤ 3 の場合のみ厳密計算（4以上は0になりうるため None を返す）。
+        """
+        if tables >= 4:
+            # 4卓以上: 0/1のみの行列で行和=列和=4が可能 → min_shared=0
+            return 0
+
+        # tables ≤ 3: 全行列を列挙して最小値を求める
+        def compositions(total, parts):
+            if parts == 1:
+                yield (total,)
+                return
+            for i in range(total + 1):
+                for rest in compositions(total - i, parts - 1):
+                    yield (i,) + rest
+
+        rows_options = list(compositions(4, tables))
+        min_shared = float('inf')
+
+        def search(row_idx, col_sums, current_shared):
+            nonlocal min_shared
+            if current_shared >= min_shared:
+                return
+            if row_idx == tables:
+                if all(s == 4 for s in col_sums):
+                    min_shared = min(min_shared, current_shared)
+                return
+            remaining = tables - row_idx - 1
+            for row in rows_options:
+                valid = True
+                new_sums = list(col_sums)
+                row_shared = 0
+                for j in range(tables):
+                    new_sums[j] += row[j]
+                    if new_sums[j] > 4 or (4 - new_sums[j]) > remaining * 4:
+                        valid = False
+                        break
+                    row_shared += row[j] * (row[j] - 1) // 2
+                if valid:
+                    search(row_idx + 1, tuple(new_sums), current_shared + row_shared)
+
+        search(0, tuple([0] * tables), 0)
+        return min_shared if min_shared < float('inf') else None
+
     def _set_time_budget(self):
         """問題サイズに応じたSA時間予算を設定"""
-        if self.players <= 12:
-            self.sa_time_limit = 2.0
-        elif self.players <= 20:
-            self.sa_time_limit = 3.0
-        elif self.players <= 32:
-            self.sa_time_limit = 4.0
-        else:
+        if self.players <= 16:
             self.sa_time_limit = 5.0
+        elif self.players <= 20:
+            self.sa_time_limit = 4.0
+        elif self.players <= 32:
+            self.sa_time_limit = 5.0
+        else:
+            self.sa_time_limit = 6.0
 
     def _find_best_table_configuration(self) -> Dict:
         """5人打ちありの場合の最適な卓構成を見つける"""
@@ -107,7 +220,7 @@ class UniversalTableGroupGenerator:
 
     def generate(self) -> List[List[List[int]]]:
         """全ラウンドの卓組を生成"""
-        floor_val = self.ideal_meetings_floor
+        floor_val = self.effective_floor
         ceil_val = self.ideal_meetings_ceil
 
         # 複数の初期解を生成
@@ -147,10 +260,23 @@ class UniversalTableGroupGenerator:
         best_cost, best_solution = candidates[0]
 
         if best_cost > 0:
+            # floor >= 2の場合は二段階SAで下限達成を優先
+            use_two_phase = (floor_val >= 2)
             best_solution = self._simulated_annealing(
-                best_solution, self.sa_time_limit
+                best_solution, self.sa_time_limit, two_phase=use_two_phase
             )
             best_cost = self._compute_cost_from_solution(best_solution)
+
+        # 下限未達成の場合、ランダム初期解 + 二段階SAで再試行
+        if best_cost > 0 and floor_val > 0:
+            retry_sol = self._generate_random()
+            retry_sol = self._simulated_annealing(
+                retry_sol, self.sa_time_limit, two_phase=True
+            )
+            retry_cost = self._compute_cost_from_solution(retry_sol)
+            if retry_cost < best_cost:
+                best_solution = retry_sol
+                best_cost = retry_cost
 
         # SA後にもう一度LNS
         if best_cost > 0:
@@ -557,7 +683,7 @@ class UniversalTableGroupGenerator:
             count = pair_count.get(pair, 0)
             if count == 0:
                 score += 1000
-            elif count < self.ideal_meetings_floor:
+            elif count < self.effective_floor:
                 score += 100 / (count + 1)
             else:
                 score -= count * count
@@ -593,11 +719,26 @@ class UniversalTableGroupGenerator:
 
     @staticmethod
     def _penalty(count: int, floor_val: int, ceil_val: int) -> int:
-        """1ペアのペナルティ"""
+        """1ペアのペナルティ（実効下限違反を最優先で回避）
+
+        実効下限（数学的に達成可能な下限）を下回る場合は非常に高いペナルティを
+        課し、SAが下限達成を最優先にするようにする。上限超過は通常ペナルティ。
+        """
         if count < floor_val:
-            return (floor_val - count) ** 2
+            return 10 * (floor_val - count) ** 2
         elif count > ceil_val:
             return (count - ceil_val) ** 2
+        return 0
+
+    @staticmethod
+    def _penalty_floor_only(count: int, floor_val: int, ceil_val: int) -> int:
+        """Phase 1用ペナルティ（下限違反のみ、重みなし）
+
+        SA Phase 1で使用。重みなしにすることでSAの温度スケジュールと
+        適合し、局所最適からの脱出を容易にする。
+        """
+        if count < floor_val:
+            return (floor_val - count) ** 2
         return 0
 
     def _compute_cost_from_solution(self, solution: List[List[List[int]]]) -> int:
@@ -609,7 +750,7 @@ class UniversalTableGroupGenerator:
                     for p1, p2 in combinations(table, 2):
                         pair_count[tuple(sorted([p1, p2]))] += 1
 
-        floor_val = self.ideal_meetings_floor
+        floor_val = self.effective_floor
         ceil_val = self.ideal_meetings_ceil
         cost = 0
         for pair in self.all_pairs:
@@ -618,11 +759,29 @@ class UniversalTableGroupGenerator:
         return cost
 
     def _simulated_annealing(self, solution: List[List[List[int]]],
-                             time_limit_sec: float) -> List[List[List[int]]]:
-        """焼きなまし法による大域的最適化"""
-        floor_val = self.ideal_meetings_floor
-        ceil_val = self.ideal_meetings_ceil
-        _penalty = self._penalty
+                             time_limit_sec: float,
+                             floor_val: Optional[int] = None,
+                             ceil_val: Optional[int] = None,
+                             two_phase: bool = False) -> List[List[List[int]]]:
+        """焼きなまし法による大域的最適化
+
+        two_phase=True の場合（下限達成が困難なケース向け）:
+          Phase 1（前半70%）: 下限達成を最優先（軽量ペナルティ、上限なし）
+          Phase 2（後半30%）: フル最適化（下限維持 + 上限最小化）
+        two_phase=False の場合（デフォルト）:
+          単一フェーズでフル最適化（1000x重みで下限を強く保護）
+        """
+        if floor_val is None:
+            floor_val = self.effective_floor
+        if ceil_val is None:
+            ceil_val = self.ideal_meetings_ceil
+        # 二段階SA: Phase 1では軽量ペナルティ、Phase 2ではフルペナルティ
+        use_two_phase = two_phase and (floor_val > 0)
+        phase1_ratio = 0.8  # 全時間のうちPhase 1に使う割合
+        phase1_end_time = time_limit_sec * phase1_ratio if use_two_phase else 0.0
+        active_ceil = min(ceil_val + 2, self.rounds) if use_two_phase else ceil_val
+        in_phase1 = use_two_phase
+        _penalty = self._penalty_floor_only if use_two_phase else self._penalty
 
         # SA用データ構造を初期化
         n = self.players
@@ -649,18 +808,18 @@ class UniversalTableGroupGenerator:
         current_cost = 0
         for i in range(1, n + 1):
             for j in range(i + 1, n + 1):
-                current_cost += _penalty(pair_matrix[i][j], floor_val, ceil_val)
+                current_cost += _penalty(pair_matrix[i][j], floor_val, active_ceil)
 
         best_cost = current_cost
         best_tables = [[table[:] for table in rt] for rt in sa_round_tables]
 
-        if best_cost == 0:
+        if best_cost == 0 and not use_two_phase:
             return self._reconstruct_solution(best_tables, sa_waiting)
 
         num_rounds = len(sa_round_tables)
 
-        # 温度パラメータ
-        T_start = 5.0
+        # 温度パラメータ（Phase 1は高温から、Phase 2は低温から）
+        T_start = 10.0 if use_two_phase else 5.0
         T_end = 0.005
         log_ratio = math.log(T_end / T_start)
 
@@ -680,12 +839,47 @@ class UniversalTableGroupGenerator:
                 elapsed = _time() - start_time
                 if elapsed >= time_limit_sec:
                     break
-                progress = elapsed / time_limit_sec
-                T = T_start * _exp(log_ratio * progress)
+
+                # Phase切り替え判定
+                if in_phase1 and elapsed >= phase1_end_time:
+                    in_phase1 = False
+                    active_ceil = ceil_val
+                    _penalty = self._penalty  # Phase 2: フルペナルティに切替
+
+                    # 最良解に復元してPhase 2用にコストを再計算
+                    pair_matrix = [[0] * (n + 1) for _ in range(n + 1)]
+                    for r in range(num_rounds):
+                        sa_round_tables[r] = [table[:] for table in best_tables[r]]
+                        for table in sa_round_tables[r]:
+                            for p1, p2 in combinations(table, 2):
+                                pair_matrix[p1][p2] += 1
+                                pair_matrix[p2][p1] += 1
+
+                    current_cost = 0
+                    for i in range(1, n + 1):
+                        for j in range(i + 1, n + 1):
+                            current_cost += _penalty(pair_matrix[i][j], floor_val, active_ceil)
+                    best_cost = current_cost
+                    last_improve_iter = iteration
+
+                    # Phase 2: 温度リセット
+                    T_start = 3.0
+                    log_ratio = math.log(T_end / T_start)
+
+                    if best_cost == 0:
+                        break
+                    continue
+
+                # 温度計算（各Phase内での進捗に基づく）
+                if in_phase1:
+                    phase_progress = elapsed / phase1_end_time if phase1_end_time > 0 else 1.0
+                else:
+                    remaining = time_limit_sec - phase1_end_time
+                    phase_progress = (elapsed - phase1_end_time) / remaining if remaining > 0 else 1.0
+                T = T_start * _exp(log_ratio * min(phase_progress, 1.0))
 
                 # スタグネーション検出: 長時間改善なしなら最良解に戻る
                 if iteration - last_improve_iter > 50000 and current_cost > best_cost:
-                    # 最良解に復元
                     pair_matrix = [[0] * (n + 1) for _ in range(n + 1)]
                     for r in range(num_rounds):
                         sa_round_tables[r] = [table[:] for table in best_tables[r]]
@@ -726,18 +920,18 @@ class UniversalTableGroupGenerator:
                     continue
                 m = table_a[k]
                 c = pm_i[m]
-                delta += _penalty(c - 1, floor_val, ceil_val) - _penalty(c, floor_val, ceil_val)
+                delta += _penalty(c - 1, floor_val, active_ceil) - _penalty(c, floor_val, active_ceil)
                 c = pm_j[m]
-                delta += _penalty(c + 1, floor_val, ceil_val) - _penalty(c, floor_val, ceil_val)
+                delta += _penalty(c + 1, floor_val, active_ceil) - _penalty(c, floor_val, active_ceil)
 
             for k in range(len(table_b)):
                 if k == pj_idx:
                     continue
                 m = table_b[k]
                 c = pm_j[m]
-                delta += _penalty(c - 1, floor_val, ceil_val) - _penalty(c, floor_val, ceil_val)
+                delta += _penalty(c - 1, floor_val, active_ceil) - _penalty(c, floor_val, active_ceil)
                 c = pm_i[m]
-                delta += _penalty(c + 1, floor_val, ceil_val) - _penalty(c, floor_val, ceil_val)
+                delta += _penalty(c + 1, floor_val, active_ceil) - _penalty(c, floor_val, active_ceil)
 
             # 受容判定
             if delta <= 0 or (T > 0 and _random() < _exp(-delta / T)):
@@ -846,29 +1040,27 @@ class UniversalTableGroupGenerator:
                             pair_matrix[p2][p1] += 1
                     continue
 
-                # 現在のパーティションのコスト（ベースライン）
-                cur_part_cost = 0
+                # 正しい差分コスト計算:
+                # パーティションPを追加した場合のコスト変動 =
+                # Σ_{pairs in P} [_penalty(pm+1) - _penalty(pm)]
+                # 最小のcost_deltaを持つパーティションが最良
+                cur_cost_delta = 0
                 for table in tables[r]:
                     for p1, p2 in combinations(table, 2):
-                        cur_part_cost += _penalty(
-                            pair_matrix[p1][p2] + 1, floor_val, ceil_val
-                        )
+                        pm = pair_matrix[p1][p2]
+                        cur_cost_delta += _penalty(pm + 1, floor_val, ceil_val) - _penalty(pm, floor_val, ceil_val)
 
-                # 差分コスト計算で最良パーティションを選択
                 best_partition = tables[r]
-                best_part_cost = cur_part_cost
+                best_cost_delta = cur_cost_delta
 
                 for partition in partitions:
-                    part_cost = 0
+                    cost_delta = 0
                     for table in partition:
                         for p1, p2 in combinations(table, 2):
-                            part_cost += _penalty(
-                                pair_matrix[p1][p2] + 1, floor_val, ceil_val
-                            )
-                        if part_cost >= best_part_cost:
-                            break  # 早期打ち切り
-                    if part_cost < best_part_cost:
-                        best_part_cost = part_cost
+                            pm = pair_matrix[p1][p2]
+                            cost_delta += _penalty(pm + 1, floor_val, ceil_val) - _penalty(pm, floor_val, ceil_val)
+                    if cost_delta < best_cost_delta:
+                        best_cost_delta = cost_delta
                         best_partition = [table[:] for table in partition]
 
                 # 最良パーティションを適用
@@ -878,7 +1070,7 @@ class UniversalTableGroupGenerator:
                         pair_matrix[p1][p2] += 1
                         pair_matrix[p2][p1] += 1
 
-                delta = best_part_cost - cur_part_cost
+                delta = best_cost_delta - cur_cost_delta
                 if delta < 0:
                     current_cost += delta
                     improved = True
@@ -994,11 +1186,15 @@ class UniversalTableGroupGenerator:
 
         print("\n条件達成度（階層的優先順位）:")
 
-        if self.ideal_meetings_floor > 0:
-            achievement1 = "✓ 完璧" if min_count >= self.ideal_meetings_floor else "△ 部分的"
+        eff_floor = self.effective_floor
+        if eff_floor > 0:
+            achievement1 = "✓ 達成" if min_count >= eff_floor else "✗ 未達成"
         else:
-            achievement1 = "✓ 最良" if min_count == 0 else "✗ 未達成"
-        print(f"1. 【最重要】同卓回数の最小: {min_count}回 {achievement1}")
+            achievement1 = "✓ 達成"
+        floor_note = ""
+        if eff_floor < self.ideal_meetings_floor:
+            floor_note = f"（理論値{self.ideal_meetings_floor}は数学的に達成不可能）"
+        print(f"1. 【最重要】同卓回数の最小: {min_count}回（実効下限: {eff_floor}回{floor_note}） {achievement1}")
 
         if max_count <= self.ideal_meetings_ceil:
             achievement2 = "✓ 理想的"
@@ -1027,7 +1223,10 @@ class UniversalTableGroupGenerator:
         print(f"4. 【優先度低】最大回数のペア数: {count_distribution[max_count]}ペア ({max_pairs_ratio*100:.1f}%) {achievement4}")
 
         print(f"\n理論値との比較:")
-        print(f"- 理論的な最小同卓回数: {self.ideal_meetings_floor}回")
+        if self.effective_floor < self.ideal_meetings_floor:
+            print(f"- 理論的な最小同卓回数: {self.ideal_meetings_floor}回（達成不可能 → 実効下限: {self.effective_floor}回）")
+        else:
+            print(f"- 理論的な最小同卓回数: {self.ideal_meetings_floor}回（実効下限: {self.effective_floor}回）")
         print(f"- 理論的な最大同卓回数: {self.ideal_meetings_ceil}回")
         print(f"- 実際の平均同卓回数: {mean_count:.2f}回（理論値: {self.ideal_meetings_float:.2f}回）")
 

@@ -13,27 +13,38 @@ document.addEventListener('DOMContentLoaded', function() {
         // エラーメッセージをクリア
         errorDiv.style.display = 'none';
         errorDiv.textContent = '';
-        
+
         // プレイヤー名を取得
         const playerNames = playerNamesInput.value
             .split('\n')
             .map(name => name.trim())
             .filter(name => name.length > 0);
-        
+
         const rounds = parseInt(roundsInput.value);
         const allowFive = allowFiveInput.checked;
-        
+
         // バリデーション
         if (playerNames.length < 4) {
             showError('参加者は4人以上必要です');
             return;
         }
-        
+
         if (rounds < 1) {
             showError('回数は1以上必要です');
             return;
         }
-        
+
+        // ボタン無効化 + ローディング表示
+        generateBtn.disabled = true;
+        generateBtn.textContent = '生成中...';
+        generateBtn.classList.add('loading');
+        resultsSection.style.display = 'none';
+        resultsContent.innerHTML = '';
+
+        // ローディングインジケータを表示
+        const loadingDiv = document.getElementById('loading');
+        loadingDiv.style.display = 'block';
+
         try {
             const response = await fetch('/generate', {
                 method: 'POST',
@@ -46,9 +57,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     allow_five: allowFive
                 })
             });
-            
+
             const data = await response.json();
-            
+
             if (response.ok) {
                 displayResults(data.results);
             } else {
@@ -57,6 +68,12 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (error) {
             showError('通信エラーが発生しました');
             console.error(error);
+        } finally {
+            // ボタン復帰
+            generateBtn.disabled = false;
+            generateBtn.textContent = '卓組を生成';
+            generateBtn.classList.remove('loading');
+            loadingDiv.style.display = 'none';
         }
     }
     

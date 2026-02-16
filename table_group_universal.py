@@ -736,6 +736,7 @@ class UniversalTableGroupGenerator:
 
         SA Phase 1で使用。重みなしにすることでSAの温度スケジュールと
         適合し、局所最適からの脱出を容易にする。
+        ceil_valは_penaltyとのインターフェース一貫性のために受け取るが未使用。
         """
         if count < floor_val:
             return (floor_val - count) ** 2
@@ -766,10 +767,10 @@ class UniversalTableGroupGenerator:
         """焼きなまし法による大域的最適化
 
         two_phase=True の場合（下限達成が困難なケース向け）:
-          Phase 1（前半70%）: 下限達成を最優先（軽量ペナルティ、上限なし）
-          Phase 2（後半30%）: フル最適化（下限維持 + 上限最小化）
+          Phase 1（前半80%）: 下限達成を最優先（軽量ペナルティ、上限緩和）
+          Phase 2（後半20%）: フル最適化（下限維持 + 上限最小化）
         two_phase=False の場合（デフォルト）:
-          単一フェーズでフル最適化（1000x重みで下限を強く保護）
+          単一フェーズでフル最適化（10x重みで下限を強く保護）
         """
         if floor_val is None:
             floor_val = self.effective_floor

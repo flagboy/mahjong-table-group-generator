@@ -37,7 +37,6 @@ document.addEventListener('DOMContentLoaded', function() {
         // ボタン無効化 + ローディング表示
         generateBtn.disabled = true;
         generateBtn.textContent = '生成中...';
-        generateBtn.classList.add('loading');
         resultsSection.style.display = 'none';
         resultsContent.innerHTML = '';
 
@@ -72,7 +71,6 @@ document.addEventListener('DOMContentLoaded', function() {
             // ボタン復帰
             generateBtn.disabled = false;
             generateBtn.textContent = '卓組を生成';
-            generateBtn.classList.remove('loading');
             loadingDiv.style.display = 'none';
         }
     }
